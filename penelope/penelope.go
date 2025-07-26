@@ -93,6 +93,7 @@ type Args struct {
 	BotAdmins          []string
 	LettaHost          string
 	LettaApiKey        string
+	LettaAgentName     string
 	IgnoreDids         []string
 	AdminOnly          bool
 }
@@ -149,8 +150,9 @@ func New(ctx context.Context, args *Args) (*Penelope, error) {
 	}
 
 	letta, _ := letta.NewClient(&letta.ClientArgs{
-		Host:   args.LettaHost,
-		ApiKey: args.LettaApiKey,
+		Host:      args.LettaHost,
+		ApiKey:    args.LettaApiKey,
+		AgentName: args.LettaAgentName,
 	})
 
 	clock := syntax.NewTIDClock(0)

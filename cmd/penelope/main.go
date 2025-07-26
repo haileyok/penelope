@@ -90,6 +90,11 @@ func main() {
 				EnvVars:  []string{"PENELOPE_LETTA_API_KEY"},
 				Required: true,
 			},
+			&cli.StringFlag{
+				Name:     "letta-agent-name",
+				EnvVars:  []string{"PENELOPE_LETTA_AGENT_NAME"},
+				Required: true,
+			},
 			&cli.StringSliceFlag{
 				Name:     "ignore-dids",
 				EnvVars:  []string{"PENELOPE_IGNORE_DIDS"},
@@ -142,6 +147,7 @@ var run = func(cmd *cli.Context) error {
 		BotAdmins:          cmd.StringSlice("bot-admins"),
 		LettaHost:          cmd.String("letta-host"),
 		LettaApiKey:        cmd.String("letta-api-key"),
+		LettaAgentName:     cmd.String("letta-agent-name"),
 		IgnoreDids:         cmd.StringSlice("ignore-dids"),
 		AdminOnly:          cmd.Bool("admin-only"),
 	})
