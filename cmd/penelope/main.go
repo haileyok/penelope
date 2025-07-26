@@ -104,6 +104,16 @@ func main() {
 				Name:    "admin-only",
 				EnvVars: []string{"PENELOPE_ADMIN_ONLY"},
 			},
+			&cli.StringFlag{
+				Name:     "api-key",
+				EnvVars:  []string{"PENELOPE_API_KEY"},
+				Required: true,
+			},
+			&cli.StringFlag{
+				Name:     "addr",
+				EnvVars:  []string{"PENELOPE_ADDR"},
+				Required: true,
+			},
 		},
 		Commands: cli.Commands{
 			&cli.Command{
@@ -150,6 +160,8 @@ var run = func(cmd *cli.Context) error {
 		LettaAgentName:     cmd.String("letta-agent-name"),
 		IgnoreDids:         cmd.StringSlice("ignore-dids"),
 		AdminOnly:          cmd.Bool("admin-only"),
+		ApiKey:             cmd.String("api-key"),
+		Addr:               cmd.String("addr"),
 	})
 	if err != nil {
 		panic(err)

@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -15,51 +16,21 @@ import (
 	"github.com/bluesky-social/indigo/atproto/syntax"
 	"github.com/bluesky-social/indigo/xrpc"
 	"github.com/haileyok/penelope/letta"
+	"github.com/labstack/echo-contrib/echoprometheus"
+	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v4/middleware"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	slogecho "github.com/samber/slog-echo"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
-
-type Function struct {
-	Name        string         `json:"name"`
-	Description string         `json:"description"`
-	Parameters  map[string]any `json:"parameters"`
-}
-
-type Tool struct {
-	Type     string   `json:"type"`
-	Function Function `json:"function"`
-}
-
-type Message struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
-}
-
-type ChatRequest struct {
-	Model     string    `json:"model"`
-	Messages  []Message `json:"messages"`
-	Tools     []Tool    `json:"tools,omitempty"`
-	Stream    bool      `json:"stream"`
-	KeepAlive string    `json:"keep_alive"`
-}
-
-type ChatResponse struct {
-	Model     string  `json:"model"`
-	CreatedAt string  `json:"created_at"`
-	Message   Message `json:"message"`
-	Done      bool    `json:"done"`
-}
-
-type FunctionCall struct {
-	Name      string            `json:"name"`
-	Arguments map[string]string `json:"arguments"`
-}
 
 type Penelope struct {
 	h           *http.Client
 	x           *xrpc.Client
 	letta       *letta.Client
+	echo        *echo.Echo
+	httpd       *http.Server
 	xmu         sync.RWMutex
 	conn        driver.Conn
 	db          *gorm.DB
@@ -75,6 +46,7 @@ type Penelope struct {
 	ignoreDids  []string
 	clock       *syntax.TIDClock
 	adminOnly   bool
+	apiKey      string
 }
 
 type Args struct {
@@ -96,6 +68,8 @@ type Args struct {
 	LettaAgentName     string
 	IgnoreDids         []string
 	AdminOnly          bool
+	ApiKey             string
+	Addr               string
 }
 
 func New(ctx context.Context, args *Args) (*Penelope, error) {
@@ -114,6 +88,7 @@ func New(ctx context.Context, args *Args) (*Penelope, error) {
 		return nil, err
 	}
 	db.AutoMigrate(
+		&UserMemory{},
 		&Block{},
 	)
 
@@ -160,10 +135,37 @@ func New(ctx context.Context, args *Args) (*Penelope, error) {
 
 	clock := syntax.NewTIDClock(0)
 
+	e := echo.New()
+	e.Pre(middleware.RemoveTrailingSlash())
+
+	e.Use(middleware.Recover())
+	e.Use(middleware.RemoveTrailingSlash())
+	e.Use(echoprometheus.NewMiddleware(""))
+
+	slogEchoCfg := slogecho.Config{
+		DefaultLevel:     slog.LevelInfo,
+		ServerErrorLevel: slog.LevelError,
+		WithResponseBody: true,
+		Filters: []slogecho.Filter{
+			func(ctx echo.Context) bool {
+				return ctx.Request().URL.Path != "/_health"
+			},
+		},
+	}
+
+	e.Use(slogecho.NewWithConfig(args.Logger, slogEchoCfg))
+
+	httpd := &http.Server{
+		Handler: e,
+		Addr:    args.Addr,
+	}
+
 	return &Penelope{
 		h:           h,
 		x:           x,
 		letta:       letta,
+		echo:        e,
+		httpd:       httpd,
 		conn:        conn,
 		db:          db,
 		cursorFile:  args.CursorFile,
@@ -175,6 +177,7 @@ func New(ctx context.Context, args *Args) (*Penelope, error) {
 		ignoreDids:  args.IgnoreDids,
 		clock:       &clock,
 		adminOnly:   args.AdminOnly,
+		apiKey:      args.ApiKey,
 	}, nil
 }
 
@@ -188,6 +191,13 @@ func (p *Penelope) Run(ctx context.Context) error {
 		p.logger.Info("Starting metrics server")
 		if err := http.ListenAndServe(p.metricsAddr, metricsServer); err != nil {
 			p.logger.Error("metrics server failed", "error", err)
+		}
+	}()
+
+	go func() {
+		p.logger.Info("starting httpd")
+		if err := p.httpd.ListenAndServe(); err != nil {
+			p.logger.Error("httpd server failed", "error", err)
 		}
 	}()
 
@@ -225,4 +235,40 @@ func (p *Penelope) GetClient() *xrpc.Client {
 	p.xmu.RLock()
 	defer p.xmu.RUnlock()
 	return p.x
+}
+
+func (p *Penelope) handleAuthMiddleware(next echo.HandlerFunc) echo.HandlerFunc {
+	return func(e echo.Context) error {
+		auth := e.Request().Header.Get("authorization")
+		pts := strings.Split(auth, " ")
+		if len(pts) == 2 {
+			if p.apiKey == pts[1] {
+				return next(e)
+			}
+		}
+		return e.JSON(http.StatusForbidden, makeErrorJson("unauthorized"))
+	}
+}
+
+func (p *Penelope) addRoutes() {
+
+	p.echo.GET("/_health", func(e echo.Context) error {
+		return e.String(http.StatusOK, "healthy")
+	})
+
+	g := p.echo.Group("/tools")
+	g.Use(p.handleAuthMiddleware)
+	g.POST("/recent-posts", p.handleGetRecentPosts)
+	g.POST("/create-top-level-post", p.handleCreateTopLevelPost)
+	g.POST("/create-whitewind-post", p.handleCreateWhitewindPost)
+}
+
+type RequestError struct {
+	Error string `json:"error"`
+}
+
+func makeErrorJson(error string) RequestError {
+	return RequestError{
+		Error: error,
+	}
 }

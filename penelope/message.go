@@ -21,7 +21,7 @@ import (
 
 var cidbuilder = gocid.V1Builder{Codec: 0x71, MhType: 0x12, MhLength: 0}
 
-func (p *Penelope) SendMessage(ctx context.Context, rec *bsky.FeedPost, did, uri, cid, content string) {
+func (p *Penelope) SendMessage(ctx context.Context, rec *bsky.FeedPost, did, uri, cid, c string) {
 	p.chatMu.Lock()
 
 	var block Block
@@ -68,16 +68,6 @@ func (p *Penelope) SendMessage(ctx context.Context, rec *bsky.FeedPost, did, uri
 		description = *profile.Description
 	}
 
-	// if err := p.letta.UpsertIdentity(ctx, api.UpsertIdentityInput{
-	// 	IdentifierKey: did,
-	// 	Name:          did,
-	// 	IdentityType:  "user",
-	// 	Properties:    identityProperties,
-	// }); err != nil {
-	// 	p.logger.Error("failed to upsert identity", "error", err)
-	// 	return
-	// }
-
 	if err := p.db.Raw("SELECT * FROM blocks WHERE did = ?", did).Scan(&block).Error; err != nil {
 		if !errors.Is(err, gorm.ErrRecordNotFound) {
 			p.logger.Error("error getting block from db", "error", err)
@@ -86,10 +76,20 @@ func (p *Penelope) SendMessage(ctx context.Context, rec *bsky.FeedPost, did, uri
 	}
 
 	if block.Id == "" {
+		var currentMemories string
+		memories, err := p.getUserMemory(did)
+		if err == nil {
+			summary, err := p.SummarizeText(ctx, memories)
+			if err != nil {
+				p.logger.Error("could not summarize memories", "error", err)
+			}
+			currentMemories = summary
+		}
+
 		newBlock, err := p.letta.CreateBlock(ctx, api.CreateBlockInput{
-			Value: fmt.Sprintf(UserBlockValue, profile.Handle, displayName, description),
+			Value: fmt.Sprintf(UserBlockValue, profile.Handle, did, displayName, description, currentMemories),
 			Label: "user-" + did,
-			Limit: 5000,
+			Limit: 15000,
 		})
 		if err != nil {
 			p.logger.Error("could not create block", "error", err)
@@ -115,6 +115,18 @@ func (p *Penelope) SendMessage(ctx context.Context, rec *bsky.FeedPost, did, uri
 		p.logger.Error("could not attach block to agent", "error", err)
 		return
 	}
+
+	threadSummary, err := p.LoadThread(ctx, rec.Reply)
+	if err != nil {
+		p.logger.Error("could not load thread", "error", err)
+		return
+	}
+
+	var content string
+	if threadSummary != "" {
+		content += "<thread_summary>" + threadSummary + "</thread_summary>\n\n"
+	}
+	content += rec.Text
 
 	resp, err := p.letta.SendMessage(ctx, []api.Message{
 		{
@@ -239,8 +251,47 @@ const (
 	UserBlockValue = `This is my section of core memory devoted to information about the user.
 	I currently know the following about them:
 	Bluesky Handle: @%s
+	Atproto DID: %s
 	Display Name: %s
 	Profile Description: %s
 	Where are they from? What do they do? Who are they? What do they post about?
-	I should update this memory over time as I interact with the human and learn more about them.`
+	I should update this memory over time as I interact with the human and learn more about them.
+
+	%s
+	`
 )
+
+func (p *Penelope) SummarizeText(ctx context.Context, text string) (string, error) {
+	defer func() {
+		p.letta.ResetMessages(ctx)
+	}()
+
+	resp, err := p.letta.SendMessage(ctx, []api.Message{
+		{
+			Role:    "user",
+			Content: "Please take the following text and form a 1-3 paragraph summary of it. You shouldn't feel like you need to make it too short, but stay under 3 paragraphs if possible.\n\n" + text,
+		},
+	})
+	if err != nil {
+		p.logger.Error("error sending message", "error", err)
+		return "", nil
+	}
+
+	if len(resp.Messages) == 0 {
+		return "", fmt.Errorf("error summarizing text. response was empty")
+	}
+
+	var response string
+	for _, m := range resp.Messages {
+		if m.MessageType != string(api.MessageToolCallMessage) {
+			continue
+		}
+		arguments, err := api.ParseToolCallArguments(m.ToolCall.Arguments)
+		if err != nil {
+			return "", fmt.Errorf("error parsing arguments: %w", err)
+		}
+		response = arguments.Message
+	}
+
+	return response, nil
+}
