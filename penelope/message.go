@@ -117,14 +117,14 @@ func (p *Penelope) SendMessage(ctx context.Context, rec *bsky.FeedPost, did, uri
 		p.logger.Info("found memory block id for user", "did", did, "block-id", block.Id)
 	}
 
-	if err := p.letta.AttachBlock(ctx, block.Id); err != nil {
-		p.logger.Error("could not attach block to agent", "error", err)
-		return
-	}
-
 	threadSummary, err := p.LoadThread(ctx, rec.Reply)
 	if err != nil {
 		p.logger.Error("could not load thread", "error", err)
+		return
+	}
+
+	if err := p.letta.AttachBlock(ctx, block.Id); err != nil {
+		p.logger.Error("could not attach block to agent", "error", err)
 		return
 	}
 
