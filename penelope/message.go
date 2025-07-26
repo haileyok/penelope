@@ -24,16 +24,19 @@ var cidbuilder = gocid.V1Builder{Codec: 0x71, MhType: 0x12, MhLength: 0}
 func (p *Penelope) SendMessage(ctx context.Context, rec *bsky.FeedPost, did, uri, cid, content string) {
 	p.chatMu.Lock()
 
-	ctx, cancel := context.WithTimeout(ctx, 3*time.Minute)
-	defer cancel()
-
 	var block Block
 	defer func() {
 		if err := p.letta.DetachBlock(ctx, block.Id); err != nil {
 			p.logger.Error("could not detatch block from agent", "error", err)
 		}
+		if err := p.letta.ResetMessages(ctx); err != nil {
+			p.logger.Error("could not reset message", "error", err)
+		}
 		p.chatMu.Unlock()
 	}()
+
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Minute)
+	defer cancel()
 
 	profile, err := bsky.ActorGetProfile(ctx, p.GetClient(), did)
 	if err != nil {
