@@ -113,6 +113,9 @@ func New(ctx context.Context, args *Args) (*Penelope, error) {
 	if err != nil {
 		return nil, err
 	}
+	db.AutoMigrate(
+		&Block{},
+	)
 
 	conn, err := clickhouse.Open(&clickhouse.Options{
 		Addr: []string{args.ClickhouseAddr},
