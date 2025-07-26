@@ -25,7 +25,7 @@ func (p *Penelope) SendMessage(ctx context.Context, rec *bsky.FeedPost, did, uri
 	p.chatMu.Lock()
 
 	var block Block
-	defer func() {
+	defer func(ctx context.Context) {
 		if err := p.letta.DetachBlock(ctx, block.Id); err != nil {
 			p.logger.Error("could not detatch block from agent", "error", err)
 		}
@@ -33,7 +33,7 @@ func (p *Penelope) SendMessage(ctx context.Context, rec *bsky.FeedPost, did, uri
 			p.logger.Error("could not reset message", "error", err)
 		}
 		p.chatMu.Unlock()
-	}()
+	}(ctx)
 
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Minute)
 	defer cancel()
