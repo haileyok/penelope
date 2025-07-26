@@ -68,15 +68,15 @@ func (p *Penelope) SendMessage(ctx context.Context, rec *bsky.FeedPost, did, uri
 		description = *profile.Description
 	}
 
-	if err := p.letta.UpsertIdentity(ctx, api.UpsertIdentityInput{
-		IdentifierKey: did,
-		Name:          did,
-		IdentityType:  "user",
-		Properties:    identityProperties,
-	}); err != nil {
-		p.logger.Error("failed to upsert identity", "error", err)
-		return
-	}
+	// if err := p.letta.UpsertIdentity(ctx, api.UpsertIdentityInput{
+	// 	IdentifierKey: did,
+	// 	Name:          did,
+	// 	IdentityType:  "user",
+	// 	Properties:    identityProperties,
+	// }); err != nil {
+	// 	p.logger.Error("failed to upsert identity", "error", err)
+	// 	return
+	// }
 
 	if err := p.db.Raw("SELECT * FROM blocks WHERE did = ?", did).Scan(&block).Error; err != nil {
 		if !errors.Is(err, gorm.ErrRecordNotFound) {
@@ -88,7 +88,7 @@ func (p *Penelope) SendMessage(ctx context.Context, rec *bsky.FeedPost, did, uri
 	if block.Id == "" {
 		newBlock, err := p.letta.CreateBlock(ctx, api.CreateBlockInput{
 			Value: fmt.Sprintf(UserBlockValue, profile.Handle, displayName, description),
-			Label: did,
+			Label: "user-" + did,
 			Limit: 5000,
 		})
 		if err != nil {
