@@ -1,6 +1,9 @@
 package api
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+)
 
 type Message struct {
 	Role        string  `json:"role"`
@@ -44,6 +47,11 @@ type MessageResult struct {
 		StepID      string    `json:"step_id"`
 		IsErr       bool      `json:"is_err"`
 		Content     string    `json:"content"`
+		ToolCall    struct {
+			Name       string `json:"name"`
+			Arguments  string `json:"arguments"`
+			ToolCallID string `json:"tool_call_id"`
+		} `json:"tool_call"`
 	} `json:"messages"`
 	StopReason struct {
 		StopReason  string `json:"stop_reason"`
@@ -91,4 +99,16 @@ type MessageResult struct {
 		} `json:"steps_messages"`
 		RunIds []string `json:"run_ids"`
 	} `json:"usage"`
+}
+
+type ToolCallArguments struct {
+	Message string `json:"message"`
+}
+
+func ParseToolCallArguments(arguments string) (*ToolCallArguments, error) {
+	var parsed ToolCallArguments
+	if err := json.Unmarshal([]byte(arguments), &parsed); err != nil {
+		return nil, err
+	}
+	return &parsed, nil
 }

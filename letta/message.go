@@ -16,7 +16,7 @@ func (c *Client) SendMessage(ctx context.Context, messages []api.Message) (*api.
 		MaxSteps:            50,
 		UseAssistantMessage: false,
 		IncludeReturnMessageTypes: []api.MessageType{
-			api.MessageAssistantMessage,
+			api.MessageToolCallMessage,
 		},
 	}
 

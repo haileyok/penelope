@@ -121,16 +121,26 @@ func (p *Penelope) handleCreatePost(ctx context.Context, rev string, recb []byte
 			}
 		}
 
-		if len(resp.Messages) != 1 {
+		if len(resp.Messages) == 0 {
 			p.logger.Error("message response contained more than one message", "messages-length", len(resp.Messages))
 			return
 		}
 
-		message := resp.Messages[0]
+		var response string
+		for _, m := range resp.Messages {
+			if m.MessageType != string(api.MessageToolCallMessage) {
+				continue
+			}
+			arguments, err := api.ParseToolCallArguments(m.ToolCall.Arguments)
+			if err != nil {
+				p.logger.Error("error parsing arguments", "error", err)
+			}
+			response = arguments.Message
+		}
 
 		postTexts := []string{}
 		var currentText string
-		words := strings.Split(message.Content, " ")
+		words := strings.Split(response, " ")
 		for i, w := range words {
 			currentText += w + " "
 			if len(words)-1 == i || len(currentText) >= 250 {
@@ -200,7 +210,7 @@ func (p *Penelope) handleCreatePost(ctx context.Context, rev string, recb []byte
 			return
 		}
 
-		p.logger.Info("replying to post with message", "msg", message.Content)
+		p.logger.Info("replying to post with message", "msg", response)
 	}()
 
 	return nil
