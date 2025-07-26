@@ -96,7 +96,7 @@ func (p *Penelope) handleCreatePost(ctx context.Context, rev string, recb []byte
 		defer cancel()
 		resp, err := p.letta.SendMessage(ctx, []api.Message{
 			{
-				Role:     "system",
+				Role:     "user",
 				Content:  rec.Text,
 				SenderID: &did,
 			},
