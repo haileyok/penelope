@@ -42,5 +42,7 @@ func (p *Penelope) LoadThread(ctx context.Context, reply *bsky.FeedPost_ReplyRef
 		}
 	}
 
-	return p.SummarizeText(ctx, threadText)
+	return threadText, nil
+
+	// return p.SummarizeText(ctx, threadText)
 }
