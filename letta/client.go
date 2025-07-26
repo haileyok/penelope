@@ -5,6 +5,7 @@ import (
 	"context"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/bluesky-social/indigo/pkg/robusthttp"
 )
@@ -23,8 +24,11 @@ type ClientArgs struct {
 }
 
 func NewClient(args *ClientArgs) (*Client, error) {
+	client := robusthttp.NewClient()
+	client.Timeout = 3 * time.Minute
+
 	return &Client{
-		client:    robusthttp.NewClient(),
+		client:    client,
 		host:      args.Host,
 		apiKey:    args.ApiKey,
 		agentName: args.AgentName,
