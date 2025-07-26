@@ -5,20 +5,12 @@ import (
 	"context"
 	"fmt"
 	"slices"
-	"strings"
 	"time"
 
 	"github.com/araddon/dateparse"
-	"github.com/bluesky-social/indigo/api/atproto"
 	"github.com/bluesky-social/indigo/api/bsky"
 	"github.com/bluesky-social/indigo/atproto/syntax"
-	"github.com/bluesky-social/indigo/lex/util"
-	"github.com/haileyok/penelope/letta/api"
-	gocid "github.com/ipfs/go-cid"
-	"mvdan.cc/xurls/v2"
 )
-
-var cidbuilder = gocid.V1Builder{Codec: 0x71, MhType: 0x12, MhLength: 0}
 
 func (p *Penelope) handleCreate(ctx context.Context, recb []byte, indexedAt, rev, did, collection, rkey, cid, seq string) error {
 	iat, err := dateparse.ParseAny(indexedAt)
@@ -91,127 +83,7 @@ func (p *Penelope) handleCreatePost(ctx context.Context, rev string, recb []byte
 
 	p.logger.Info("got a post to reply to", "uri", uri)
 
-	go func() {
-		ctx, cancel := context.WithTimeout(ctx, 3*time.Minute)
-		defer cancel()
-		resp, err := p.letta.SendMessage(ctx, []api.Message{
-			{
-				Role:     "user",
-				Content:  rec.Text,
-				SenderID: &did,
-			},
-		})
-		if err != nil {
-			p.logger.Error("error sending message", "error", err)
-			return
-		}
-
-		parents := []*atproto.RepoStrongRef{{
-			Uri: uri,
-			Cid: cid,
-		}}
-
-		var root *atproto.RepoStrongRef
-		if rec.Reply != nil {
-			root = rec.Reply.Root
-		} else {
-			root = &atproto.RepoStrongRef{
-				Uri: uri,
-				Cid: cid,
-			}
-		}
-
-		if len(resp.Messages) == 0 {
-			p.logger.Error("message response contained more than one message", "messages-length", len(resp.Messages))
-			return
-		}
-
-		var response string
-		for _, m := range resp.Messages {
-			if m.MessageType != string(api.MessageToolCallMessage) {
-				continue
-			}
-			arguments, err := api.ParseToolCallArguments(m.ToolCall.Arguments)
-			if err != nil {
-				p.logger.Error("error parsing arguments", "error", err)
-			}
-			response = arguments.Message
-		}
-
-		postTexts := []string{}
-		var currentText string
-		words := strings.Split(response, " ")
-		for i, w := range words {
-			currentText += w + " "
-			if len(words)-1 == i || len(currentText) >= 250 {
-				postTexts = append(postTexts, currentText)
-				currentText = ""
-			}
-		}
-
-		var writes []*atproto.RepoApplyWrites_Input_Writes_Elem
-		for _, pt := range postTexts {
-			pt = strings.TrimSpace(pt)
-			if pt == "" {
-				continue
-			}
-
-			rkey := p.clock.Next().String()
-			post := bsky.FeedPost{
-				Text:      pt,
-				CreatedAt: syntax.DatetimeNow().String(),
-				Reply: &bsky.FeedPost_ReplyRef{
-					Parent: parents[len(parents)-1],
-					Root:   root,
-				},
-			}
-
-			strict := xurls.Strict()
-			urls := strict.FindAllString(pt, -1)
-			if len(urls) != 0 {
-				post.Embed = &bsky.FeedPost_Embed{
-					EmbedExternal: &bsky.EmbedExternal{
-						External: &bsky.EmbedExternal_External{
-							Uri: urls[0],
-						},
-					},
-				}
-			}
-
-			writes = append(writes, &atproto.RepoApplyWrites_Input_Writes_Elem{
-				RepoApplyWrites_Create: &atproto.RepoApplyWrites_Create{
-					Collection: "app.bsky.feed.post",
-					Rkey:       &rkey,
-					Value:      &util.LexiconTypeDecoder{Val: &post},
-				},
-			})
-
-			cborBytes := new(bytes.Buffer)
-			err = post.MarshalCBOR(cborBytes)
-			cidFromJson, err := cidbuilder.Sum(cborBytes.Bytes())
-			if err != nil {
-				p.logger.Error("error getting cid")
-			}
-
-			parents = append(parents, &atproto.RepoStrongRef{
-				Uri: fmt.Sprintf("at://%s/app.bsky.feed.post/%s", p.botDid, rkey),
-				Cid: cidFromJson.String(),
-			})
-		}
-
-		input := &atproto.RepoApplyWrites_Input{
-			Repo:   p.botDid,
-			Writes: writes,
-		}
-
-		_, err = atproto.RepoApplyWrites(ctx, p.x, input)
-		if err != nil {
-			p.logger.Error("error creating post", "error", err)
-			return
-		}
-
-		p.logger.Info("replying to post with message", "msg", response)
-	}()
+	go p.SendMessage(ctx, &rec, did, uri, cid, rec.Text)
 
 	return nil
 }

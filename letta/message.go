@@ -34,6 +34,7 @@ func (c *Client) SendMessage(ctx context.Context, messages []api.Message) (*api.
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrResponse, err)
 	}
+	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		io.Copy(io.Discard, resp.Body)
@@ -46,4 +47,25 @@ func (c *Client) SendMessage(ctx context.Context, messages []api.Message) (*api.
 	}
 
 	return &result, nil
+}
+
+func (c *Client) ResetMessages(ctx context.Context) error {
+	req, err := c.CreatePatchRequest(ctx, "/v1/agents/:agent_id/reset-messages")
+	if err != nil {
+		return fmt.Errorf("%w: %w", ErrRequest, err)
+	}
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return fmt.Errorf("%w: %w", ErrResponse, err)
+	}
+	defer resp.Body.Close()
+
+	io.Copy(io.Discard, resp.Body)
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("%w: status %d", ErrBadStatusCode, resp.StatusCode)
+	}
+
+	return nil
 }

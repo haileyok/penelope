@@ -48,6 +48,32 @@ func (c *Client) CreatePostRequest(ctx context.Context, endpoint string, bodyByt
 	return req, nil
 }
 
+func (c *Client) CreatePutRequest(ctx context.Context, endpoint string, bodyBytes []byte) (*http.Request, error) {
+	endpoint = c.addAgentName(endpoint)
+	req, err := http.NewRequestWithContext(ctx, "PUT", c.host+endpoint, bytes.NewReader(bodyBytes))
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("content-type", "application/json")
+	req.Header.Set("authorization", "Bearer "+c.apiKey)
+
+	return req, nil
+}
+
+func (c *Client) CreatePatchRequest(ctx context.Context, endpoint string) (*http.Request, error) {
+	endpoint = c.addAgentName(endpoint)
+	req, err := http.NewRequestWithContext(ctx, "PATCH", c.host+endpoint, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("content-type", "application/json")
+	req.Header.Set("authorization", "Bearer "+c.apiKey)
+
+	return req, nil
+}
+
 func (c *Client) CreateGetRequest(ctx context.Context, endpoint string) (*http.Request, error) {
 	endpoint = c.addAgentName(endpoint)
 	req, err := http.NewRequestWithContext(ctx, "GET", c.host+endpoint, nil)
