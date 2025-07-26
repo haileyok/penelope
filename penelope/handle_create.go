@@ -101,6 +101,10 @@ func (p *Penelope) handleCreatePost(ctx context.Context, rev string, recb []byte
 				SenderID: &did,
 			},
 		})
+		if err != nil {
+			p.logger.Error("error sending message", "error", err)
+			return
+		}
 
 		parents := []*atproto.RepoStrongRef{{
 			Uri: uri,
