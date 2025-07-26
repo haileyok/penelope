@@ -78,11 +78,13 @@ func (p *Penelope) SendMessage(ctx context.Context, rec *bsky.FeedPost, did, uri
 	if block.Id == "" {
 		var currentMemories string
 		memories, err := p.getUserMemory(did)
-		if err == nil {
+		if err == nil && memories != "" {
+			p.logger.Info("found existing memories for user, migrating", "did", did)
 			summary, err := p.SummarizeText(ctx, memories)
 			if err != nil {
 				p.logger.Error("could not summarize memories", "error", err)
 			}
+			p.logger.Info("summarized memories", "summary", summary)
 			currentMemories = summary
 		}
 
@@ -109,6 +111,10 @@ func (p *Penelope) SendMessage(ctx context.Context, rec *bsky.FeedPost, did, uri
 			p.logger.Error("could not add new block to db", "error", err)
 			return
 		}
+
+		p.logger.Info("created memory block for user", "did", did, "block-id", block.Id)
+	} else {
+		p.logger.Info("found memory block id for user", "did", did, "block-id", block.Id)
 	}
 
 	if err := p.letta.AttachBlock(ctx, block.Id); err != nil {
